@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mholt/archiver"
+	"github.com/mholt/archiver/v3"
 
 	"github.com/filebrowser/filebrowser/v2/files"
 	"github.com/filebrowser/filebrowser/v2/fileutils"
@@ -44,9 +44,8 @@ func parseQueryFiles(r *http.Request, f *files.FileInfo, _ *users.User) ([]strin
 	return fileSlice, nil
 }
 
-//nolint: goconst
+//nolint:goconst
 func parseQueryAlgorithm(r *http.Request) (string, archiver.Writer, error) {
-	// TODO: use enum
 	switch r.URL.Query().Get("algo") {
 	case "zip", "true", "":
 		return ".zip", archiver.NewZip(), nil
@@ -81,7 +80,7 @@ var rawHandler = withUser(func(w http.ResponseWriter, r *http.Request, d *data) 
 		return http.StatusAccepted, nil
 	}
 
-	file, err := files.NewFileInfo(files.FileOptions{
+	file, err := files.NewFileInfo(&files.FileOptions{
 		Fs:         d.user.Fs,
 		Path:       r.URL.Path,
 		Modify:     d.user.Perm.Modify,
@@ -200,11 +199,6 @@ func rawDirHandler(w http.ResponseWriter, r *http.Request, d *data, file *files.
 }
 
 func rawFileHandler(w http.ResponseWriter, r *http.Request, file *files.FileInfo) (int, error) {
-	isFresh := checkEtag(w, r, file.ModTime.Unix(), file.Size)
-	if isFresh {
-		return http.StatusNotModified, nil
-	}
-
 	fd, err := file.Fs.Open(file.Path)
 	if err != nil {
 		return http.StatusInternalServerError, err
@@ -212,7 +206,8 @@ func rawFileHandler(w http.ResponseWriter, r *http.Request, file *files.FileInfo
 	defer fd.Close()
 
 	setContentDisposition(w, r, file)
-
+	w.Header().Add("Content-Security-Policy", `script-src 'none';`)
+	w.Header().Set("Cache-Control", "private")
 	http.ServeContent(w, r, file.Name, file.ModTime, fd)
 	return 0, nil
 }
